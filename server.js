@@ -4,7 +4,8 @@ const cors = require('cors');
 const Database = require('better-sqlite3');
 const path = require('path');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
+
 
 let db = null;
 const databasePath = path.join(__dirname, 'user.db');
