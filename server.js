@@ -1,8 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
-const { open } = require('sqlite');
 const cors = require('cors');
-const sqlite3 = require('sqlite3');
+const Database = require('better-sqlite3');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -14,29 +13,31 @@ const jwtSecret = crypto.randomBytes(64).toString('hex');
 const app = express();
 app.use(express.json());
 
-app.use(cors({
-    origin: 'http://localhost:3000',
-}));
+app.use(
+    cors({
+        origin: 'http://localhost:3000',
+    })
+);
 
-const createTables = async () => {
+const createTables = () => {
     try {
-        await db.exec(`
+        db.prepare(`
             CREATE TABLE IF NOT EXISTS userDetails (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username VARCHAR(255) NOT NULL UNIQUE,
                 email VARCHAR(255) NOT NULL UNIQUE,
                 password VARCHAR(255) NOT NULL
             )
-        `);
+        `).run();
 
-        await db.exec(`
+        db.prepare(`
             CREATE TABLE IF NOT EXISTS todo (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task TEXT NOT NULL,
                 status VARCHAR(255) NOT NULL,
                 userId INTEGER NOT NULL
             )
-        `);
+        `).run();
 
         console.log('Tables created successfully');
     } catch (error) {
@@ -45,16 +46,11 @@ const createTables = async () => {
     }
 };
 
-const initializeDbAndServer = async () => {
+const initializeDbAndServer = () => {
     try {
-        db = await open({
-            filename: databasePath,
-            driver: sqlite3.Database,
-        });
-
-        await createTables();
+        db = new Database(databasePath, { verbose: console.log });
+        createTables();
         app.listen(4040, () => console.log('Server Running at http://localhost:4040/'));
-
     } catch (e) {
         console.error(`DB Error: ${e.message}`);
         process.exit(1);
@@ -81,20 +77,20 @@ const authenticateToken = (req, res, next) => {
 
 // Helper function to validate required fields
 const validateFields = (fields) => {
-    return fields.every(field => field !== undefined && field !== null && field !== '');
+    return fields.every((field) => field !== undefined && field !== null && field !== '');
 };
 
 // Routes
-app.post('/', async (req, res) => {
+app.post('/', (req, res) => {
     const { name, password } = req.body;
     if (!validateFields([name, password])) {
         return res.status(400).json({ error: 'Invalid request: Missing username or password' });
     }
     try {
         const query = `SELECT * FROM userDetails WHERE username = ?`;
-        const user = await db.get(query, [name]);
+        const user = db.prepare(query).get(name);
 
-        if (user && await bcrypt.compare(password, user.password)) {
+        if (user && bcrypt.compareSync(password, user.password)) {
             const token = jwt.sign({ username: user.username }, jwtSecret, { expiresIn: '1h' });
             res.status(200).json({ message: 'Successfully logged in', token });
         } else {
@@ -107,22 +103,22 @@ app.post('/', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    res.status(200).json({message:'your are in home page'})
-})
+    res.status(200).json({ message: 'You are on the home page' });
+});
 
-app.post('/register', async (req, res) => {
+app.post('/register', (req, res) => {
     const { username, email, password } = req.body;
     if (!validateFields([username, email, password])) {
         return res.status(400).json({ error: 'Invalid request: Missing username, email, or password' });
     }
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = bcrypt.hashSync(password, 10);
         const selectUserQuery = `SELECT username FROM userDetails WHERE username = ? OR email = ?`;
-        const dbUser = await db.get(selectUserQuery, [username, email]);
+        const dbUser = db.prepare(selectUserQuery).get(username, email);
 
         if (!dbUser) {
             const newRegisterQuery = `INSERT INTO userDetails(username, email, password) VALUES (?, ?, ?)`;
-            await db.run(newRegisterQuery, [username, email, hashedPassword]);
+            db.prepare(newRegisterQuery).run(username, email, hashedPassword);
             res.status(200).json({ message: 'New user registered successfully' });
         } else {
             res.status(400).json({ error: 'User already exists' });
@@ -133,10 +129,10 @@ app.post('/register', async (req, res) => {
     }
 });
 
-app.get('/userDetails', async (req, res) => {
+app.get('/userDetails', (req, res) => {
     try {
         const allUsersQuery = `SELECT * FROM userDetails`;
-        const users = await db.all(allUsersQuery);
+        const users = db.prepare(allUsersQuery).all();
         res.status(200).json(users);
     } catch (error) {
         console.error('Error fetching user details:', error);
@@ -144,7 +140,7 @@ app.get('/userDetails', async (req, res) => {
     }
 });
 
-app.post('/todoPost/:user', authenticateToken, async (req, res) => {
+app.post('/todoPost/:user', authenticateToken, (req, res) => {
     const user = req.params.user;
     const { task, status } = req.body;
     if (!validateFields([task, status])) {
@@ -152,19 +148,19 @@ app.post('/todoPost/:user', authenticateToken, async (req, res) => {
     }
     try {
         const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES(?, ?, ?)`;
-        const result = await db.run(addTodoQuery, [task, status, user]);
-        res.status(200).json({ message: 'Todo added successfully', id: result.lastID });
+        const result = db.prepare(addTodoQuery).run(task, status, user);
+        res.status(200).json({ message: 'Todo added successfully', id: result.lastInsertRowid });
     } catch (error) {
         console.error('Error adding todo:', error);
         res.status(500).json({ error: 'Failed to add todo' });
     }
 });
 
-app.get('/todoList/:userId', authenticateToken, async (req, res) => {
+app.get('/todoList/:userId', authenticateToken, (req, res) => {
     const userId = req.params.userId;
     try {
         const getTodoListQuery = `SELECT * FROM todo WHERE userId = ?`;
-        const todos = await db.all(getTodoListQuery, [userId]);
+        const todos = db.prepare(getTodoListQuery).all(userId);
         res.status(200).json(todos);
     } catch (error) {
         console.error('Error fetching todo list:', error);
