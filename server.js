@@ -1,18 +1,25 @@
 const express = require('express');
 const crypto = require('crypto');
 const cors = require('cors');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
+const app = express();
+app.use(express.json());
 
-let db = null;
 const databasePath = path.join(__dirname, 'user.db');
 const jwtSecret = crypto.randomBytes(64).toString('hex');
 
-const app = express();
-app.use(express.json());
+let db = new sqlite3.Database(databasePath, (err) => {
+    if (err) {
+        console.error('Error opening database:', err.message);
+    } else {
+        console.log('Connected to the SQLite database.');
+        createTables();
+    }
+});
 
 app.use(
     cors({
@@ -21,44 +28,37 @@ app.use(
 );
 
 const createTables = () => {
-    try {
-        db.prepare(`
-            CREATE TABLE IF NOT EXISTS userDetails (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username VARCHAR(255) NOT NULL UNIQUE,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                password VARCHAR(255) NOT NULL
-            )
-        `).run();
+    const createUserTable = `
+        CREATE TABLE IF NOT EXISTS userDetails (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username VARCHAR(255) NOT NULL UNIQUE,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL
+        )`;
+    const createTodoTable = `
+        CREATE TABLE IF NOT EXISTS todo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task TEXT NOT NULL,
+            status VARCHAR(255) NOT NULL,
+            userId INTEGER NOT NULL
+        )`;
 
-        db.prepare(`
-            CREATE TABLE IF NOT EXISTS todo (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task TEXT NOT NULL,
-                status VARCHAR(255) NOT NULL,
-                userId INTEGER NOT NULL
-            )
-        `).run();
+    db.run(createUserTable, (err) => {
+        if (err) {
+            console.error('Error creating userDetails table:', err.message);
+        } else {
+            console.log('UserDetails table created successfully.');
+        }
+    });
 
-        console.log('Tables created successfully');
-    } catch (error) {
-        console.error('Error creating tables:', error);
-        throw new Error('Database initialization failed');
-    }
+    db.run(createTodoTable, (err) => {
+        if (err) {
+            console.error('Error creating todo table:', err.message);
+        } else {
+            console.log('Todo table created successfully.');
+        }
+    });
 };
-
-const initializeDbAndServer = () => {
-    try {
-        db = new Database(databasePath, { verbose: console.log });
-        createTables();
-        app.listen(4040, () => console.log('Server Running at http://localhost:4040/'));
-    } catch (e) {
-        console.error(`DB Error: ${e.message}`);
-        process.exit(1);
-    }
-};
-
-initializeDbAndServer();
 
 // JWT Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -87,24 +87,19 @@ app.post('/', (req, res) => {
     if (!validateFields([name, password])) {
         return res.status(400).json({ error: 'Invalid request: Missing username or password' });
     }
-    try {
-        const query = `SELECT * FROM userDetails WHERE username = ?`;
-        const user = db.prepare(query).get(name);
-
+    const query = `SELECT * FROM userDetails WHERE username = ?`;
+    db.get(query, [name], (err, user) => {
+        if (err) {
+            console.error('Error fetching user:', err.message);
+            return res.status(500).json({ error: 'Failed to authenticate user' });
+        }
         if (user && bcrypt.compareSync(password, user.password)) {
             const token = jwt.sign({ username: user.username }, jwtSecret, { expiresIn: '1h' });
             res.status(200).json({ message: 'Successfully logged in', token });
         } else {
             res.status(401).json({ error: 'Invalid username or password' });
         }
-    } catch (error) {
-        console.error('Error during login:', error);
-        res.status(500).json({ error: 'Failed to authenticate user' });
-    }
-});
-
-app.get('/', (req, res) => {
-    res.status(200).json({ message: 'You are on the home page' });
+    });
 });
 
 app.post('/register', (req, res) => {
@@ -112,33 +107,37 @@ app.post('/register', (req, res) => {
     if (!validateFields([username, email, password])) {
         return res.status(400).json({ error: 'Invalid request: Missing username, email, or password' });
     }
-    try {
-        const hashedPassword = bcrypt.hashSync(password, 10);
-        const selectUserQuery = `SELECT username FROM userDetails WHERE username = ? OR email = ?`;
-        const dbUser = db.prepare(selectUserQuery).get(username, email);
-
-        if (!dbUser) {
-            const newRegisterQuery = `INSERT INTO userDetails(username, email, password) VALUES (?, ?, ?)`;
-            db.prepare(newRegisterQuery).run(username, email, hashedPassword);
-            res.status(200).json({ message: 'New user registered successfully' });
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const selectQuery = `SELECT username FROM userDetails WHERE username = ? OR email = ?`;
+    db.get(selectQuery, [username, email], (err, user) => {
+        if (err) {
+            console.error('Error fetching user:', err.message);
+            return res.status(500).json({ error: 'Failed to register user' });
+        }
+        if (!user) {
+            const insertQuery = `INSERT INTO userDetails(username, email, password) VALUES (?, ?, ?)`;
+            db.run(insertQuery, [username, email, hashedPassword], function (err) {
+                if (err) {
+                    console.error('Error registering user:', err.message);
+                    return res.status(500).json({ error: 'Failed to register user' });
+                }
+                res.status(200).json({ message: 'New user registered successfully' });
+            });
         } else {
             res.status(400).json({ error: 'User already exists' });
         }
-    } catch (error) {
-        console.error('Error during registration:', error);
-        res.status(500).json({ error: 'Failed to register user' });
-    }
+    });
 });
 
 app.get('/userDetails', (req, res) => {
-    try {
-        const allUsersQuery = `SELECT * FROM userDetails`;
-        const users = db.prepare(allUsersQuery).all();
-        res.status(200).json(users);
-    } catch (error) {
-        console.error('Error fetching user details:', error);
-        res.status(500).json({ error: 'Failed to fetch user details' });
-    }
+    const query = `SELECT * FROM userDetails`;
+    db.all(query, [], (err, rows) => {
+        if (err) {
+            console.error('Error fetching user details:', err.message);
+            return res.status(500).json({ error: 'Failed to fetch user details' });
+        }
+        res.status(200).json(rows);
+    });
 });
 
 app.post('/todoPost/:user', authenticateToken, (req, res) => {
@@ -167,4 +166,8 @@ app.get('/todoList/:userId', authenticateToken, (req, res) => {
         console.error('Error fetching todo list:', error);
         res.status(500).json({ error: 'Failed to fetch todo list' });
     }
+});
+
+app.listen(4040, () => {
+    console.log('Server Running at http://localhost:4040/');
 });
