@@ -1,4 +1,3 @@
-const serverlessExpress = require('@vendia/serverless-express');
 const express = require('express');
 const crypto = require('crypto');
 const cors = require('cors');
@@ -7,13 +6,19 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
+
 let db = null;
 const databasePath = path.join(__dirname, 'user.db');
 const jwtSecret = crypto.randomBytes(64).toString('hex');
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: 'http://localhost:3000' }));
+
+app.use(
+    cors({
+        origin: 'http://localhost:3000',
+    })
+);
 
 const createTables = () => {
     try {
@@ -34,23 +39,26 @@ const createTables = () => {
                 userId INTEGER NOT NULL
             )
         `).run();
+
+        console.log('Tables created successfully');
     } catch (error) {
         console.error('Error creating tables:', error);
         throw new Error('Database initialization failed');
     }
 };
 
-const initializeDatabase = () => {
+const initializeDbAndServer = () => {
     try {
         db = new Database(databasePath, { verbose: console.log });
         createTables();
-    } catch (error) {
-        console.error(`DB Error: ${error.message}`);
-        throw new Error('Database initialization failed');
+        app.listen(4040, () => console.log('Server Running at http://localhost:4040/'));
+    } catch (e) {
+        console.error(`DB Error: ${e.message}`);
+        process.exit(1);
     }
 };
 
-initializeDatabase();
+initializeDbAndServer();
 
 // JWT Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -160,6 +168,3 @@ app.get('/todoList/:userId', authenticateToken, (req, res) => {
         res.status(500).json({ error: 'Failed to fetch todo list' });
     }
 });
-
-
-module.exports.handler = serverlessExpress({ app });
