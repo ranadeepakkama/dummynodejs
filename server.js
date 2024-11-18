@@ -14,7 +14,7 @@ const databasePath = path.join(__dirname, 'user.db');
 const jwtSecret = crypto.randomBytes(64).toString('hex');
 
 const PORT  = process.env.PORT || 4040
-const url = process.env.sql_url
+const url = process.env.SQL_URL
 console.log(url)
 
 let db = new sqlite3.Database(databasePath, (err) => {
