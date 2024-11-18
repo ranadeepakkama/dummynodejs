@@ -4,6 +4,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const jwt = require('jsonwebtoken');
+require("dotenv").config();
 const bcrypt = require('bcryptjs');
 
 const app = express();
@@ -11,6 +12,10 @@ app.use(express.json());
 
 const databasePath = path.join(__dirname, 'user.db');
 const jwtSecret = crypto.randomBytes(64).toString('hex');
+
+const PORT  = process.env.PORT || 4040
+const url = process.env.sql_url
+console.log(url)
 
 let db = new sqlite3.Database(databasePath, (err) => {
     if (err) {
@@ -168,6 +173,6 @@ app.get('/todoList/:userId', authenticateToken, (req, res) => {
     }
 });
 
-app.listen(4040, () => {
-    console.log('Server Running at http://localhost:4040/');
+app.listen(PORT, () => {
+    console.log(`Server Running at http://localhost:${PORT}/`);
 });
