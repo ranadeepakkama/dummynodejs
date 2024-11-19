@@ -66,20 +66,23 @@ const createTables = () => {
 };
 
 // JWT Authentication Middleware
-const authenticateToken = (req, res, next) => {
-    const token = req.headers['authorization'];
-    if (!token) {
+/* const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
         return res.status(401).json({ error: 'No token provided' });
     }
 
+    const token = authHeader.split(' ')[1]; 
     jwt.verify(token, jwtSecret, (err, user) => {
         if (err) {
             return res.status(403).json({ error: 'Invalid or expired token' });
         }
-        req.user = user;
+        req.user = user; // Attach user info to request
         next();
     });
 };
+*/
+
 
 // Helper function to validate required fields
 const validateFields = (fields) => {
@@ -87,7 +90,7 @@ const validateFields = (fields) => {
 };
 
 // Routes
-app.post('/', (req, res) => {
+app.post('/login', (req, res) => {
     const { name, password } = req.body;
     if (!validateFields([name, password])) {
         return res.status(400).json({ error: 'Invalid request: Missing username or password' });
@@ -145,31 +148,39 @@ app.get('/userDetails', (req, res) => {
     });
 });
 
-app.post('/todoPost/:user', authenticateToken, (req, res) => {
-    const user = req.params.user;
+app.post('/todoPost/:userId', (req, res) => {
+    const userId = req.params.userId;
     const { task, status } = req.body;
+
     if (!validateFields([task, status])) {
         return res.status(400).json({ error: 'Invalid request: Missing task or status' });
     }
-    try {
-        const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES(?, ?, ?)`;
-        const result = db.prepare(addTodoQuery).run(task, status, user);
-        res.status(200).json({ message: 'Todo added successfully', id: result.lastInsertRowid });
-    } catch (error) {
-        console.error('Error adding todo:', error);
-        res.status(500).json({ error: 'Failed to add todo' });
-    }
+
+    const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES (?, ?, ?)`;
+
+    db.run(addTodoQuery, [task, status, userId], function (err) {
+        if (err) {
+            console.error('Error adding todo:', err.message);
+            return res.status(500).json({ error: 'Failed to add todo' });
+        }
+
+        // Use "this" to access the last inserted row ID
+        res.status(200).json({
+            message: 'Todo added successfully',
+            id: this.lastID, // ID of the newly inserted row
+        });
+    });
 });
 
-app.get('/todoList/:userId', authenticateToken, (req, res) => {
+
+app.get('/todoList/:userId', (req, res) => {
     const userId = req.params.userId;
-    try {
-        const getTodoListQuery = `SELECT * FROM todo WHERE userId = ?`;
-        const todos = db.prepare(getTodoListQuery).all(userId);
-        res.status(200).json(todos);
-    } catch (error) {
-        console.error('Error fetching todo list:', error);
-        res.status(500).json({ error: 'Failed to fetch todo list' });
+    try{
+        const todoListQuery = `SELECT * FROM todo WHERE userId=?`
+        const result = db.all(todoListQuery,[userId])
+        res.status(200).json({message: {result}})
+    }catch(e){
+        res.status(500).json({error: e.message})
     }
 });
 
