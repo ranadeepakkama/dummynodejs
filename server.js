@@ -148,30 +148,30 @@ app.get('/userDetails', (req, res) => {
     });
 });
 
-app.post('/todoPost/:userId', (req, res) => {
-    const userId = req.params.userId;
+app.post('/todoPost', (req, res) => {
+    //const userId = req.params.userId;
     const { task, status } = req.body;
 
     if (!validateFields([task, status])) {
         return res.status(400).json({ error: 'Invalid request: Missing task or status' });
     }
 
-    const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES (?, ?, ?)`;
-    console.log(addTodoQuery);
-3
-    const result = db.run(addTodoQuery, [task, status, userId], function (err) {
+    const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES (?, ?)`;
+    db.run(addTodoQuery, [task, status], function (err) {
         if (err) {
             console.error('Error adding todo:', err.message);
             return res.status(500).json({ error: 'Failed to add todo' });
         }
 
-        // Use "this" to access the last inserted row ID
-        res.status(200).json({result});
+        // "this.lastID" contains the ID of the newly inserted row
+        const result = {task, status };
+        res.status(200).json({ result });
     });
 });
 
 
-app.get('/todoList/', (req,res) =>{
+
+app.get('/todoList', (req,res) =>{
 
     try{
         const gettodoListQuery = `SELECT * FROM todo`
