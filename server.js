@@ -157,32 +157,31 @@ app.post('/todoPost/:userId', (req, res) => {
     }
 
     const addTodoQuery = `INSERT INTO todo (task, status, userId) VALUES (?, ?, ?)`;
-
-    db.run(addTodoQuery, [task, status, userId], function (err) {
+    console.log(addTodoQuery);
+3
+    const result = db.run(addTodoQuery, [task, status, userId], function (err) {
         if (err) {
             console.error('Error adding todo:', err.message);
             return res.status(500).json({ error: 'Failed to add todo' });
         }
 
         // Use "this" to access the last inserted row ID
-        res.status(200).json({
-            message: 'Todo added successfully',
-            id: this.lastID, // ID of the newly inserted row
-        });
+        res.status(200).json({result});
     });
 });
 
 
-app.get('/todoList/:userId', (req, res) => {
-    const userId = req.params.userId;
+app.get('/todoList/', (req,res) =>{
+
     try{
-        const todoListQuery = `SELECT * FROM todo WHERE userId=?`
-        const result = db.all(todoListQuery,[userId])
+        const gettodoListQuery = `SELECT * FROM todo`
+        const result = db.all(gettodoListQuery)
         res.status(200).json({result})
-    }catch(e){
-        res.status(500).json({error: e.message})
+        console.log(result)
+    }catch(err){
+        res.status(404).json({message: err.message});
     }
-});
+})
 
 app.listen(PORT, () => {
     console.log(`Server Running at http://localhost:${PORT}/`);
