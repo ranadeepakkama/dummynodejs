@@ -178,7 +178,7 @@ app.get('/todoList/:userId', (req, res) => {
     try{
         const todoListQuery = `SELECT * FROM todo WHERE userId=?`
         const result = db.all(todoListQuery,[userId])
-        res.status(200).json({message: {result}})
+        res.status(200).json({result})
     }catch(e){
         res.status(500).json({error: e.message})
     }
